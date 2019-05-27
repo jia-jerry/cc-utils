@@ -29,6 +29,7 @@ from concourse.model.base import (
     ModelBase,
     ScriptType,
 )
+from model.base import ModelValidationError
 from product.scanning import ProcessingMode
 
 from .component_descriptor import COMPONENT_DESCRIPTOR_DIR_INPUT
@@ -131,6 +132,12 @@ ATTRIBUTES = (
         type=ProtecodeScanCfg,
         doc='if present, perform protecode scanning',
     ),
+    AttributeSpec.optional(
+        name='clam_av',
+        default=False,
+        type=bool,
+        doc="if :literal:`True`, perform ClamAV scanning",
+    ),
 )
 
 
@@ -140,7 +147,9 @@ class ImageScanTrait(Trait, ImageFilterMixin):
         return ATTRIBUTES
 
     def _children(self):
-        return (self.protecode(),)
+        if self.protecode():
+            return (self.protecode(),)
+        return ()
 
     def notify(self):
         return Notify(self.raw['notify'])
@@ -149,10 +158,21 @@ class ImageScanTrait(Trait, ImageFilterMixin):
         return self.raw['email_recipients']
 
     def protecode(self):
-        return ProtecodeScanCfg(raw_dict=self.raw['protecode'])
+        if self.raw['protecode']:
+            return ProtecodeScanCfg(raw_dict=self.raw['protecode'])
+
+    def clam_av(self):
+        return self.raw['clam_av']
 
     def transformer(self):
         return ImageScanTraitTransformer(trait=self)
+
+    def validate(self):
+        super().validate()
+        if not (self.protecode() or self.clam_av()):
+            raise ModelValidationError(
+                "Scan images trait: One of 'protecode' or 'clam_av' must be defined."
+            )
 
 
 class ImageScanTraitTransformer(TraitTransformer):
